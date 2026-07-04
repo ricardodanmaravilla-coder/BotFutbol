@@ -16,7 +16,6 @@ print("=" * 50)
 
 if not TELEGRAM_TOKEN:
     print("❌ ERROR: TELEGRAM_TOKEN no está configurado")
-    print("   Configúralo como variable de entorno en Render")
     exit(1)
 else:
     print(f"✅ TELEGRAM_TOKEN: {TELEGRAM_TOKEN[:10]}... (configurado)")
@@ -72,6 +71,7 @@ def obtener_partidos():
         print(f"❌ Error: {e}")
         return f"❌ Error: {str(e)}"
 
+# ===== COMANDOS =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "⚽ ¡Hola! Soy tu bot de partidos de fútbol.\n\n"
@@ -82,9 +82,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def partidos_hoy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print(f"📨 Comando /partidos de {update.effective_user.username}")
+    print(f"📨 Comando /partidos de {update.effective_user.username or update.effective_user.id}")
     mensaje = obtener_partidos()
     await update.message.reply_text(mensaje)
+    print("✅ Mensaje enviado")
 
 async def partidos_manana(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not API_FOOTBALL_KEY:
@@ -129,11 +130,15 @@ async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔑 API Key: {'✅' if API_FOOTBALL_KEY else '❌'}"
     )
 
+# ===== MAIN =====
 def main():
     print("🚀 Inicializando aplicación...")
     
     try:
+        # Crear la aplicación
         application = Application.builder().token(TELEGRAM_TOKEN).build()
+        
+        # Registrar comandos
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("partidos", partidos_hoy))
         application.add_handler(CommandHandler("manana", partidos_manana))
@@ -143,10 +148,13 @@ def main():
         print("🤖 Bot iniciado. Esperando comandos...")
         print("=" * 50)
         
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
+        # Iniciar el bot con polling
+        application.run_polling()
         
     except Exception as e:
         print(f"❌ Error fatal: {e}")
+        import traceback
+        traceback.print_exc()
         exit(1)
 
 if __name__ == "__main__":
