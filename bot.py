@@ -1,18 +1,38 @@
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 import os
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 # ===== CONFIGURACIÓN =====
-TELEGRAM_TOKEN = os.environ.get("8650824122:AAHx6VBLmgD2w63bXwZtWtAsvXLrGpcqT00")
-API_FOOTBALL_KEY = os.environ.get("52398562f6973bad35a0020660360e11")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+API_FOOTBALL_KEY = os.environ.get("API_FOOTBALL_KEY")
 ZONA_HORARIA = pytz.timezone("America/Mexico_City")
 
-# ===== FUNCIÓN PARA OBTENER PARTIDOS =====
+print("=" * 50)
+print("🤖 INICIANDO BOT DE FÚTBOL")
+print("=" * 50)
+
+if not TELEGRAM_TOKEN:
+    print("❌ ERROR: TELEGRAM_TOKEN no está configurado")
+    print("   Configúralo como variable de entorno en Render")
+    exit(1)
+else:
+    print(f"✅ TELEGRAM_TOKEN: {TELEGRAM_TOKEN[:10]}... (configurado)")
+
+if not API_FOOTBALL_KEY:
+    print("⚠️ ADVERTENCIA: API_FOOTBALL_KEY no está configurado")
+else:
+    print(f"✅ API_FOOTBALL_KEY: {API_FOOTBALL_KEY[:10]}... (configurado)")
+
 def obtener_partidos():
+    if not API_FOOTBALL_KEY:
+        return "❌ API Key no configurada."
+    
     hoy = datetime.now(ZONA_HORARIA).strftime("%Y-%m-%d")
+    print(f"📅 Buscando partidos para: {hoy}")
+    
     url = "https://v3.football.api-sports.io/fixtures"
     headers = {
         "x-rapidapi-key": API_FOOTBALL_KEY,
@@ -24,147 +44,110 @@ def obtener_partidos():
     }
     
     try:
-        response = requests.get(url, headers=headers, params=params)
+        response = requests.get(url, headers=headers, params=params, timeout=10)
+        print(f"📡 Respuesta API: {response.status_code}")
+        
+        if response.status_code != 200:
+            return f"❌ Error en API: Código {response.status_code}"
+        
         data = response.json()
         
-        if data["response"]:
-            mensaje = f"⚽ PARTIDOS DE HOY ({hoy})\n\n"
-            for partido in data["response"]:
-                local = partido["teams"]["home"]["name"]
-                visitante = partido["teams"]["away"]["name"]
-                hora = partido["fixture"]["date"]
-                hora_dt = datetime.fromisoformat(hora.replace("Z", "+00:00"))
-                hora_local = hora_dt.astimezone(ZONA_HORARIA).strftime("%H:%M")
-                liga = partido["league"]["name"]
-                
-                mensaje += f"🕐 {hora_local} | {liga}\n"
-                mensaje += f"🏠 {local} vs {visitante}\n\n"
-            return mensaje
-        else:
+        if not data.get("response"):
             return "📭 No hay partidos programados para hoy."
-    
+        
+        mensaje = f"⚽ PARTIDOS DE HOY ({hoy})\n\n"
+        
+        for partido in data["response"][:10]:
+            local = partido["teams"]["home"]["name"]
+            visitante = partido["teams"]["away"]["name"]
+            fecha_str = partido["fixture"]["date"]
+            fecha_dt = datetime.fromisoformat(fecha_str.replace("Z", "+00:00"))
+            hora = fecha_dt.astimezone(ZONA_HORARIA).strftime("%H:%M")
+            liga = partido["league"]["name"]
+            mensaje += f"🕐 {hora} | {liga}\n🏠 {local} vs {visitante}\n\n"
+        
+        return mensaje
+        
     except Exception as e:
-        return f"❌ Error al obtener partidos: {str(e)}"
+        print(f"❌ Error: {e}")
+        return f"❌ Error: {str(e)}"
 
-# ===== COMANDOS DEL BOT =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando /start - Mensaje de bienvenida"""
     await update.message.reply_text(
-        "¡Hola! Soy tu bot de partidos de fútbol ⚽\n\n"
-        "Usa /partidos para ver los partidos de hoy\n"
-        "Usa /partidos_manana para ver los de mañana\n"
-        "Usa /liga [nombre] para buscar partidos de una liga específica"
+        "⚽ ¡Hola! Soy tu bot de partidos de fútbol.\n\n"
+        "Comandos:\n"
+        "/partidos - Ver partidos de hoy\n"
+        "/manana - Ver partidos de mañana\n"
+        "/test - Verificar que el bot funciona"
     )
 
 async def partidos_hoy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando /partidos - Muestra los partidos de hoy"""
+    print(f"📨 Comando /partidos de {update.effective_user.username}")
     mensaje = obtener_partidos()
     await update.message.reply_text(mensaje)
 
 async def partidos_manana(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando /partidos_manana - Muestra los partidos de mañana"""
+    if not API_FOOTBALL_KEY:
+        await update.message.reply_text("❌ API Key no configurada")
+        return
+    
     manana = datetime.now(ZONA_HORARIA) + timedelta(days=1)
     fecha = manana.strftime("%Y-%m-%d")
     
     url = "https://v3.football.api-sports.io/fixtures"
-    headers = {"x-rapidapi-key": API_FOOTBALL_KEY, "x-rapidapi-host": "v3.football.api-sports.io"}
+    headers = {
+        "x-rapidapi-key": API_FOOTBALL_KEY,
+        "x-rapidapi-host": "v3.football.api-sports.io"
+    }
     params = {"date": fecha, "timezone": "America/Mexico_City"}
     
     try:
-        response = requests.get(url, headers=headers, params=params)
+        response = requests.get(url, headers=headers, params=params, timeout=10)
         data = response.json()
         
-        if data["response"]:
+        if data.get("response"):
             mensaje = f"⚽ PARTIDOS DE MAÑANA ({fecha})\n\n"
-            for partido in data["response"]:
+            for partido in data["response"][:10]:
                 local = partido["teams"]["home"]["name"]
                 visitante = partido["teams"]["away"]["name"]
-                hora = partido["fixture"]["date"]
-                hora_dt = datetime.fromisoformat(hora.replace("Z", "+00:00"))
-                hora_local = hora_dt.astimezone(ZONA_HORARIA).strftime("%H:%M")
+                fecha_str = partido["fixture"]["date"]
+                fecha_dt = datetime.fromisoformat(fecha_str.replace("Z", "+00:00"))
+                hora = fecha_dt.astimezone(ZONA_HORARIA).strftime("%H:%M")
                 liga = partido["league"]["name"]
-                
-                mensaje += f"🕐 {hora_local} | {liga}\n"
-                mensaje += f"🏠 {local} vs {visitante}\n\n"
+                mensaje += f"🕐 {hora} | {liga}\n🏠 {local} vs {visitante}\n\n"
             await update.message.reply_text(mensaje)
         else:
             await update.message.reply_text("📭 No hay partidos programados para mañana.")
+            
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
 
-async def liga(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando /liga [nombre] - Busca partidos de una liga específica"""
-    if not context.args:
-        await update.message.reply_text(
-            "❌ Por favor especifica el nombre de la liga.\n"
-            "Ejemplo: /liga Liga MX\n"
-            "Ejemplo: /liga Premier League"
-        )
-        return
-    
-    nombre_liga = " ".join(context.args)
-    hoy = datetime.now(ZONA_HORARIA).strftime("%Y-%m-%d")
-    
-    # Primero buscamos el ID de la liga
-    url_liga = "https://v3.football.api-sports.io/leagues"
-    headers = {"x-rapidapi-key": API_FOOTBALL_KEY, "x-rapidapi-host": "v3.football.api-sports.io"}
-    params_liga = {"name": nombre_liga}
+async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "✅ ¡El bot funciona!\n\n"
+        f"📅 {datetime.now(ZONA_HORARIA).strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"🔑 API Key: {'✅' if API_FOOTBALL_KEY else '❌'}"
+    )
+
+def main():
+    print("🚀 Inicializando aplicación...")
     
     try:
-        response_liga = requests.get(url_liga, headers=headers, params=params_liga)
-        data_liga = response_liga.json()
+        application = Application.builder().token(TELEGRAM_TOKEN).build()
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("partidos", partidos_hoy))
+        application.add_handler(CommandHandler("manana", partidos_manana))
+        application.add_handler(CommandHandler("test", test))
         
-        if not data_liga["response"]:
-            await update.message.reply_text(f"❌ No encontré la liga: {nombre_liga}")
-            return
+        print("✅ Bot configurado correctamente")
+        print("🤖 Bot iniciado. Esperando comandos...")
+        print("=" * 50)
         
-        league_id = data_liga["response"][0]["league"]["id"]
-        league_name = data_liga["response"][0]["league"]["name"]
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
         
-        # Buscamos partidos de esa liga
-        url_partidos = "https://v3.football.api-sports.io/fixtures"
-        params_partidos = {
-            "date": hoy,
-            "league": league_id,
-            "timezone": "America/Mexico_City"
-        }
-        
-        response_partidos = requests.get(url_partidos, headers=headers, params=params_partidos)
-        data_partidos = response_partidos.json()
-        
-        if data_partidos["response"]:
-            mensaje = f"⚽ PARTIDOS DE {league_name.upper()} ({hoy})\n\n"
-            for partido in data_partidos["response"]:
-                local = partido["teams"]["home"]["name"]
-                visitante = partido["teams"]["away"]["name"]
-                hora = partido["fixture"]["date"]
-                hora_dt = datetime.fromisoformat(hora.replace("Z", "+00:00"))
-                hora_local = hora_dt.astimezone(ZONA_HORARIA).strftime("%H:%M")
-                
-                mensaje += f"🕐 {hora_local} | {local} vs {visitante}\n"
-            
-            await update.message.reply_text(mensaje)
-        else:
-            await update.message.reply_text(f"📭 No hay partidos de {league_name} para hoy.")
-            
     except Exception as e:
-        await update.message.reply_text(f"❌ Error: {str(e)}")
-
-# ===== MAIN =====
-def main():
-    """Inicia el bot"""
-    # Crear la aplicación
-    application = Application.builder().token(TELEGRAM_TOKEN).build()
-    
-    # Registrar comandos
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("partidos", partidos_hoy))
-    application.add_handler(CommandHandler("partidos_manana", partidos_manana))
-    application.add_handler(CommandHandler("liga", liga))
-    
-    # Iniciar el bot (con polling)
-    print("🤖 Bot iniciado... Esperando comandos")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+        print(f"❌ Error fatal: {e}")
+        exit(1)
 
 if __name__ == "__main__":
     main()
