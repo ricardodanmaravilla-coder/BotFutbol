@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: bot-partidos-telegram
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: TELEGRAM_TOKEN
+        sync: false
+      - key: API_FOOTBALL_KEY
+        sync: false
